@@ -3,6 +3,19 @@ const app = express();
 const http = require('http');
 const port = 3000;
 
+const servers = ['8080', 8081];
+
+let current_index = 0;
+let current_proxy = servers[current_index];
+
+function nextProxy() {
+    const next = servers[current_index];
+    current_index = (current_index + 1) % servers.length;
+
+    current_proxy = next;
+
+}
+
 app.get('/', (req, res) => {
     console.log(
         `./lb \n`,
@@ -10,11 +23,12 @@ app.get('/', (req, res) => {
         `${req.method} / ${req.protocol}\n`,
         `Host: ${req.hostname}\n`,
         `User-Agent: ${req.originalUrl}\n`,
+        `Current Port: ${current_proxy}`,
     );
 
     const req_options = {
         hostname: 'localhost',
-        port: 8000,
+        port: current_proxy,
         path: '/',
         method: 'GET',
     };
@@ -32,6 +46,7 @@ app.get('/', (req, res) => {
     })
 
     proxy_request.end();
+    nextProxy();
 });
 
 app.listen(port, () => {
