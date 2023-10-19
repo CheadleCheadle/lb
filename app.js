@@ -1,12 +1,22 @@
 const express = require("express");
 const app = express();
 const http = require("http");
+const { program } = require("commander");
 const port = 3000;
 
 const servers = [
   { port: 8080, active: true },
   { port: 8081, active: true },
 ];
+
+program
+  .option(
+    "-i, --interval <interval>",
+    "Health check interval in milliseconds",
+    "10000",
+  )
+  .parse(process.argv);
+
 
 let current_index = 0;
 let current_proxy = servers[current_index];
@@ -23,7 +33,7 @@ function nextProxy() {
 }
 
 // Consider using a task scheduler to run this independent of the rest of the application. e.g. node-cron or PM2 to manage it
-const interval = setInterval(health_check, 10000);
+const interval = setInterval(health_check, program.opts().interval);
 let iterations = 0;
 const max_iterations = 20;
 
@@ -44,7 +54,7 @@ function health_check() {
 
     const req = http.request(options, (res) => {
       if (res.statusCode !== 200) {
-          console.log(res, res.statusCode);
+        console.log(res, res.statusCode);
         server.active = false;
       } else {
         // Put the server back in if its not already in there
@@ -54,7 +64,7 @@ function health_check() {
     });
 
     req.on("error", (error) => {
-        console.log(error);
+      console.log(error);
       server.active = false;
     });
   });
