@@ -7,7 +7,12 @@ const port = 3000;
 const servers = [
   { port: 8080, active: true },
   { port: 8081, active: true },
+  { port: 8082, active: true },
+  { port: 8083, active: true },
 ];
+
+let current_index = 0;
+let current_proxy = servers[current_index];
 
 program
   .option(
@@ -17,13 +22,8 @@ program
   )
   .parse(process.argv);
 
-
-let current_index = 0;
-let current_proxy = servers[current_index];
-
 function nextProxy() {
   const next = servers[current_index];
-  console.log("Server map", next);
   current_index = (current_index + 1) % servers.length;
   if (next.active) {
     current_proxy = next;
@@ -32,10 +32,10 @@ function nextProxy() {
   }
 }
 
-// Consider using a task scheduler to run this independent of the rest of the application. e.g. node-cron or PM2 to manage it
 const interval = setInterval(health_check, program.opts().interval);
+
 let iterations = 0;
-const max_iterations = 20;
+const max_iterations = 100;
 
 function health_check() {
   if (iterations >= max_iterations) {
@@ -54,19 +54,17 @@ function health_check() {
 
     const req = http.request(options, (res) => {
       if (res.statusCode !== 200) {
-        console.log(res, res.statusCode);
         server.active = false;
       } else {
-        // Put the server back in if its not already in there
-        console.log(res.statusCode);
         server.active = true;
       }
     });
 
     req.on("error", (error) => {
-      console.log(error);
       server.active = false;
     });
+
+    req.end();
   });
 }
 
@@ -96,8 +94,9 @@ app.get("/", (req, res) => {
   });
 
   proxy_request.on("error", (err) => {
-    console.log(err);
-    res.status(500).send("Proxy request failed");
+    res
+      .status(500)
+      .send("Proxy request failed. Health check will deactivate dead server");
   });
 
   proxy_request.end();
