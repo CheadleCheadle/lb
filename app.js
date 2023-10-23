@@ -25,63 +25,67 @@ program
   )
   .parse(process.argv);
 
-async function proxy_handler(req, res) {
-  const { method, url, headers, body } = req;
+// Find next proxy depending if next is active
+function next_proxy() {
   const server = servers[current_index];
-
   current_index = (current_index + 1) % servers.length;
-
-  try {
-    const options = {
-      url: `http://localhost:${server.port}`,
-      method,
-      headers,
-      data: body,
-    };
-
-    const response = await axios(options);
-    res.send(response.data);
-  } catch (error) {
-    console.error(error);
-    res
-      .status(500)
-      .send("Proxy request failed. Health check will deativate dead servers");
+  if (server.active) {
+    return server;
+  } else {
+    return next_proxy();
   }
 }
 
+// Main handler for routing requests
+async function proxy_handler(req, res) {
+  const { method, url, headers, body } = req;
+  const server = next_proxy();
+
+  if (server.active) {
+    try {
+      const options = {
+        url: `http://localhost:${server.port}`,
+        method,
+        headers,
+        data: body,
+      };
+
+      const response = await axios(options);
+      res.send(response.data);
+    } catch (error) {
+      res
+        .status(500)
+        .send("Proxy request failed. Health check will deativate dead servers");
+    }
+  }
+}
+// Health Check interval 
 const interval = setInterval(health_check, program.opts().interval);
 
 let iterations = 0;
 const max_iterations = 100;
-
+// Stops on 100 checks to prevent run away
 function health_check() {
   if (iterations >= max_iterations) {
     clearInterval(interval);
   }
 
-  servers.forEach((server, index) => {
-    const options = {
-      hostname: "localhost",
-      port: server.port,
-      path: "/",
-      method: "GET",
-    };
+  servers.forEach(async server => {
+    const url = `http://localhost:${server.port}`;
 
     console.log(`Port ${server.port} is active: ${server.active}`);
 
-    const req = http.request(options, (res) => {
-      if (res.statusCode !== 200) {
+    try {
+      const res = await axios.get(url);
+
+      if (res.status !== 200) {
         server.active = false;
       } else {
         server.active = true;
       }
-    });
-
-    req.on("error", (error) => {
+    } catch (error) {
       server.active = false;
-    });
-
-    req.end();
+    }
   });
 }
 
@@ -98,7 +102,6 @@ app.get("/", (req, res) => {
 
   proxy_handler(req, res);
 });
-
 
 app.listen(port, () => {
   console.log(`Listening in port ${port}`);

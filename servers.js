@@ -11,7 +11,7 @@ const response_handler = (id) => (req, res) => {
     `Host: ${req.hostname}\n`,
     `User-Agent: ${req.originalUrl}\n`,
   );
-  res.send(`Response ${id}`);
+  res.send(`Response ${id} \n`);
 };
 
 server1.get("/", response_handler(1));
