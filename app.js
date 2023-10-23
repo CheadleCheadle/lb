@@ -3,17 +3,20 @@ const app = express();
 const http = require("http");
 const { program } = require("commander");
 const port = 3000;
+const axios = require("axios");
 
+// Servers
 const servers = [
   { port: 8080, active: true },
   { port: 8081, active: true },
   { port: 8082, active: true },
-  { port: 8083, active: true },
 ];
 
+// Track the current server to send request
 let current_index = 0;
-let current_proxy = servers[current_index];
+const current_server = servers[current_index];
 
+// Handle interval flag when starting the load balancer
 program
   .option(
     "-i, --interval <interval>",
@@ -22,13 +25,27 @@ program
   )
   .parse(process.argv);
 
-function nextProxy() {
-  const next = servers[current_index];
+async function proxy_handler(req, res) {
+  const { method, url, headers, body } = req;
+  const server = servers[current_index];
+
   current_index = (current_index + 1) % servers.length;
-  if (next.active) {
-    current_proxy = next;
-  } else {
-    nextProxy();
+
+  try {
+    const options = {
+      url: `http://localhost:${server.port}`,
+      method,
+      headers,
+      data: body,
+    };
+
+    const response = await axios(options);
+    res.send(response.data);
+  } catch (error) {
+    console.error(error);
+    res
+      .status(500)
+      .send("Proxy request failed. Health check will deativate dead servers");
   }
 }
 
@@ -75,33 +92,13 @@ app.get("/", (req, res) => {
     `${req.method} / ${req.protocol}\n`,
     `Host: ${req.hostname}\n`,
     `User-Agent: ${req.originalUrl}\n`,
-    `Current Port: ${current_proxy.port}`,
-    `Active: ${current_proxy.active}`,
+    `Current Port: ${current_server.port}`,
+    `Active: ${current_server.active}`,
   );
 
-  const req_options = {
-    hostname: "localhost",
-    port: current_proxy.port,
-    path: "/",
-    method: "GET",
-  };
-
-  const proxy_request = http.request(req_options, (proxy_res) => {
-    res.writeHead(proxy_res.statusCode, proxy_res.headers);
-    proxy_res.pipe(res, {
-      end: true,
-    });
-  });
-
-  proxy_request.on("error", (err) => {
-    res
-      .status(500)
-      .send("Proxy request failed. Health check will deactivate dead server");
-  });
-
-  proxy_request.end();
-  nextProxy();
+  proxy_handler(req, res);
 });
+
 
 app.listen(port, () => {
   console.log(`Listening in port ${port}`);
